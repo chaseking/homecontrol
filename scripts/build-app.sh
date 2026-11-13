@@ -56,17 +56,19 @@ echo "built $APP (v$VERSION)"
 
 # Quit a running copy and wait until it is really gone: `open` on a still-exiting app just
 # re-activates it, so the new version would never start.
+# -a matters: when the app's Update button runs us, the app is our ancestor, and macOS
+# pgrep/pkill silently skip ancestors without it, so the old app kept running.
 quit_app() {
-  pkill -x HomeControl 2>/dev/null || return 0
-  for _ in $(seq 1 50); do pgrep -x HomeControl >/dev/null || return 0; sleep 0.2; done
-  pkill -9 -x HomeControl 2>/dev/null || true
+  pkill -ax HomeControl 2>/dev/null || return 0
+  for _ in $(seq 1 50); do pgrep -ax HomeControl >/dev/null || return 0; sleep 0.2; done
+  pkill -9 -ax HomeControl 2>/dev/null || true
   sleep 0.5
 }
 launch_app() {
   for _ in 1 2 3; do
     open "$1"
     for _ in $(seq 1 25); do
-      if pgrep -x HomeControl >/dev/null; then echo "launched $1"; return 0; fi
+      if pgrep -ax HomeControl >/dev/null; then echo "launched $1"; return 0; fi
       sleep 0.2
     done
   done
