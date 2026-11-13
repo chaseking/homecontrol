@@ -118,17 +118,7 @@ struct PresetEditor: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 HStack(spacing: 12) {
-                    Menu {
-                        ForEach(presetIcons, id: \.self) { icon in
-                            Button { preset.icon = icon } label: { Label(icon, systemImage: icon) }
-                        }
-                    } label: {
-                        Image(systemName: preset.icon).font(.system(size: 17)).foregroundStyle(Color.accentColor)
-                            .frame(width: 38, height: 38)
-                            .background(RoundedRectangle(cornerRadius: 9).fill(Color.accentColor.opacity(0.13)))
-                    }
-                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-                    .help("Choose icon")
+                    IconPicker(icon: $preset.icon)
                     TextField("Preset name", text: $preset.name)
                         .textFieldStyle(.plain).font(.system(size: 20, weight: .semibold))
                     Spacer()

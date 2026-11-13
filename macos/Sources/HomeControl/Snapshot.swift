@@ -32,6 +32,7 @@ enum Snapshot {
                     await render(SettingsView(), size: CGSize(width: 900, height: 620), dark: dark,
                                  to: dir.appendingPathComponent("settings-\(pane.rawValue)-\(suffix).png"))
                 }
+                await render(IconGrid(icon: .constant("moon")), size: nil, width: 280, dark: dark, to: dir.appendingPathComponent("icon-grid-\(suffix).png"))
                 if let d = model.devices.first(where: { $0.capabilities.color }) ?? model.devices.first {
                     await render(DeviceDetail(deviceId: d.id), size: nil, width: 330, dark: dark, to: dir.appendingPathComponent("device-detail-\(suffix).png"))
                 }

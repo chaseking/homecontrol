@@ -195,4 +195,51 @@ extension View {
     func hoverHighlight(radius: CGFloat = 7) -> some View { modifier(HoverHighlight(radius: radius)) }
 }
 
-let presetIcons = ["sparkles", "sun.max", "moon", "sofa", "bed.double", "fork.knife", "tv", "book", "leaf", "drop", "power", "house", "lightbulb", "lamp.floor", "party.popper", "film"]
+/// Icons offered for presets (SF Symbols). Anything already set in config.json outside this list still displays.
+let presetIcons = [
+    "sparkles", "sun.max", "sunrise", "sunset", "moon", "moon.stars",
+    "bed.double", "moon.zzz", "alarm", "sofa", "tv", "film",
+    "popcorn", "gamecontroller", "music.note", "party.popper", "wineglass", "fork.knife",
+    "cup.and.saucer", "book", "books.vertical", "desktopcomputer", "paintpalette", "lightbulb",
+    "lamp.floor", "lamp.desk", "leaf", "drop", "flame", "snowflake",
+    "bolt", "power", "house", "door.left.hand.closed", "figure.walk", "heart",
+]
+
+/// Button showing the current icon; opens a grid of choices.
+struct IconPicker: View {
+    @Binding var icon: String
+    @State private var open = false
+
+    var body: some View {
+        Button { open.toggle() } label: {
+            Image(systemName: icon).font(.system(size: 17)).foregroundStyle(Color.accentColor)
+                .frame(width: 38, height: 38)
+                .background(RoundedRectangle(cornerRadius: 9).fill(Color.accentColor.opacity(0.13)))
+        }
+        .buttonStyle(.plain)
+        .help("Choose icon")
+        .popover(isPresented: $open, arrowEdge: .bottom) { IconGrid(icon: $icon) { open = false } }
+    }
+}
+
+
+struct IconGrid: View {
+    @Binding var icon: String
+    var onPick: () -> Void = {}
+
+    var body: some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.fixed(36), spacing: 6), count: 6), spacing: 6) {
+            ForEach(presetIcons, id: \.self) { name in
+                Button { icon = name; onPick() } label: {
+                    Image(systemName: name).font(.system(size: 15))
+                        .frame(width: 36, height: 36)
+                        .foregroundStyle(icon == name ? Color.accentColor : .primary)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(icon == name ? Color.accentColor.opacity(0.18) : Color.primary.opacity(0.05)))
+                }
+                .buttonStyle(.plain)
+                .help(name)
+            }
+        }
+        .padding(12)
+    }
+}
