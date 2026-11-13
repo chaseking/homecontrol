@@ -3,7 +3,7 @@
 #   scripts/bump-version.sh [minor|major|release]
 set -euo pipefail
 F="$(cd "$(dirname "$0")/.." && pwd)/VERSION"
-IFS=. read -r rel maj min < <(tr -d '[:space:]' < "$F")
+IFS=. read -r rel maj min <<< "$(tr -d '[:space:]' < "$F")"
 case "${1:-minor}" in
   minor)   min=$((min + 1)) ;;
   major)   maj=$((maj + 1)); min=0 ;;
