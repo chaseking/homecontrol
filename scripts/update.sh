@@ -14,7 +14,12 @@ git merge --ff-only "origin/$BRANCH"
 echo "now at $(cat VERSION); rebuilding"
 # Refresh Python deps only if requirements changed.
 if ! git diff --quiet "$OLD" HEAD -- backend/requirements.txt; then ./scripts/setup-backend.sh; fi
-./scripts/build-app.sh --open
+# Keep an installed copy (/Applications or ~/Applications) current; otherwise just relaunch build/.
+if [ -d /Applications/HomeControl.app ] || [ -d "$HOME/Applications/HomeControl.app" ]; then
+  ./scripts/build-app.sh --install
+else
+  ./scripts/build-app.sh --open
+fi
 echo "[$(date '+%F %T')] update complete"
 exit 0
 }

@@ -99,7 +99,7 @@ final class Updater {
             return
         }
         state = .updating
-        let log = Paths.logs.appendingPathComponent("update.log")
+        let log = Paths.updateLog
         try? FileManager.default.createDirectory(at: Paths.logs, withIntermediateDirectories: true)
         FileManager.default.createFile(atPath: log.path, contents: nil)
 
@@ -135,7 +135,7 @@ final class Updater {
     private nonisolated static func tail(of url: URL) -> String {
         let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
         let lines = text.split(separator: "\n").suffix(4).joined(separator: "\n")
-        return lines.isEmpty ? "The update script failed. See logs/update.log." : lines
+        return lines.isEmpty ? "The update script failed. See ~/Library/Logs/HomeControl/update.log." : lines
     }
 
     struct UpdateError: LocalizedError {

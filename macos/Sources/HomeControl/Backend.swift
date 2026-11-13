@@ -291,7 +291,7 @@ final class LocalBackend {
         let now = Date()
         crashTimes = crashTimes.filter { now.timeIntervalSince($0) < 60 } + [now]
         if crashTimes.count > 4 {
-            status = .failed("Backend keeps crashing — see logs/backend.log")
+            status = .failed("Backend keeps crashing — see ~/Library/Logs/HomeControl/backend.log")
             wantRunning = false
             return
         }

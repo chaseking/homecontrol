@@ -2,6 +2,8 @@
 # Builds build/HomeControl.app (menu bar app) and makes sure the backend venv exists.
 #   scripts/build-app.sh            release build
 #   scripts/build-app.sh --open     build, then (re)launch the app
+#   scripts/build-app.sh --install  build, copy to /Applications (or ~/Applications if that isn't writable), relaunch
+# Settings and secrets live in ~/Library/Application Support/HomeControl, not in this folder.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="$ROOT/build/HomeControl.app"
@@ -52,7 +54,15 @@ PLIST
 codesign --force --sign - "$APP" >/dev/null 2>&1
 echo "built $APP (v$VERSION)"
 
-if [ "${1:-}" = "--open" ]; then
+if [ "${1:-}" = "--install" ]; then
+  DEST_DIR="${HOMECONTROL_INSTALL_DIR:-/Applications}"
+  [ -w "$DEST_DIR" ] || { DEST_DIR="$HOME/Applications"; mkdir -p "$DEST_DIR"; }
+  pkill -x HomeControl 2>/dev/null && sleep 1 || true
+  rm -rf "$DEST_DIR/HomeControl.app"
+  ditto "$APP" "$DEST_DIR/HomeControl.app"
+  echo "installed $DEST_DIR/HomeControl.app"
+  open "$DEST_DIR/HomeControl.app"
+elif [ "${1:-}" = "--open" ]; then
   pkill -x HomeControl 2>/dev/null && sleep 1 || true
   open "$APP"
 fi

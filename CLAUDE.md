@@ -14,4 +14,4 @@ Info.plist, the backend reports it, and the in-app update checker compares it wi
 ## Updating
 
 Settings → Advanced and the menu bar show an Update button when GitHub's VERSION is newer. It runs
-`scripts/update.sh` (git fetch, fast-forward merge, rebuild, relaunch). `config.json` and `.env` are untracked so pulls never conflict with them.
+`scripts/update.sh` (git fetch, fast-forward merge, rebuild, relaunch). Your `config.json` and `.env` live in ~/Library/Application Support/HomeControl, outside the repo, so pulls never conflict with them. If an installed copy exists in /Applications, the update replaces it.

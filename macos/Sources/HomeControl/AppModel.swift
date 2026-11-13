@@ -47,6 +47,7 @@ final class AppModel {
     var client: BackendClient { BackendClient(config: config.backend) }
 
     private init() {
+        Paths.prepareDataFolders()
         config = ConfigStore.load()
         lastSavedMtime = ConfigStore.modificationDate()
     }

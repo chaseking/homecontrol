@@ -114,7 +114,7 @@ struct AppConfig: Codable, Equatable {
 // MARK: - Loading / saving
 
 enum ConfigStore {
-    static var url: URL { Paths.root.appendingPathComponent("config.json") }
+    static var url: URL { Paths.config }
 
     /// Decodes config.json on top of the defaults, so missing keys (older files, hand edits) get default values.
     static func load() -> AppConfig {
@@ -164,7 +164,7 @@ enum ConfigStore {
 // MARK: - Locations
 
 enum Paths {
-    /// The homecontrol-app directory (holds config.json, .env, backend/, logs/).
+    /// The source folder (git checkout): backend/, its .venv, scripts/, VERSION.
     static let root: URL = {
         if let env = ProcessInfo.processInfo.environment["HOMECONTROL_ROOT"], !env.isEmpty {
             return URL(fileURLWithPath: env)
@@ -182,9 +182,40 @@ enum Paths {
         return Bundle.main.bundleURL.deletingLastPathComponent()
     }()
 
-    static var env: URL { root.appendingPathComponent(".env") }
+    /// Your settings and secrets: ~/Library/Application Support/HomeControl (config.json, .env).
+    static let support: URL = {
+        if let env = ProcessInfo.processInfo.environment["HOMECONTROL_DATA"], !env.isEmpty {
+            return URL(fileURLWithPath: env)
+        }
+        return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("HomeControl")
+    }()
+    /// ~/Library/Logs/HomeControl
+    static let logs: URL = {
+        if let env = ProcessInfo.processInfo.environment["HOMECONTROL_DATA"], !env.isEmpty {
+            return URL(fileURLWithPath: env).appendingPathComponent("logs")
+        }
+        return FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0].appendingPathComponent("Logs/HomeControl")
+    }()
+
+    static var config: URL { support.appendingPathComponent("config.json") }
+    static var env: URL { support.appendingPathComponent(".env") }
     static var backendScript: URL { root.appendingPathComponent("backend/server.py") }
     static var python: URL { root.appendingPathComponent("backend/.venv/bin/python") }
-    static var logs: URL { root.appendingPathComponent("logs") }
     static var backendLog: URL { logs.appendingPathComponent("backend.log") }
+    static var updateLog: URL { logs.appendingPathComponent("update.log") }
+
+    /// Creates the data folders and, on first run after upgrading from 0.1.0/0.1.1 (when config.json and .env
+    /// lived in the source folder), copies them over. The old copies are left in place.
+    static func prepareDataFolders() {
+        let fm = FileManager.default
+        try? fm.createDirectory(at: support, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        try? fm.createDirectory(at: logs, withIntermediateDirectories: true)
+        guard !fm.fileExists(atPath: config.path), !fm.fileExists(atPath: env.path) else { return }
+        for name in ["config.json", ".env"] {
+            let old = root.appendingPathComponent(name)
+            if fm.fileExists(atPath: old.path) { try? fm.copyItem(at: old, to: support.appendingPathComponent(name)) }  // keeps .env's 0600
+        }
+        let oldLog = root.appendingPathComponent("logs/backend.log")
+        if fm.fileExists(atPath: oldLog.path), !fm.fileExists(atPath: backendLog.path) { try? fm.copyItem(at: oldLog, to: backendLog) }
+    }
 }
