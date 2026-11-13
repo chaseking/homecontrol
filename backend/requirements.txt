@@ -1,0 +1,2 @@
+aiohttp>=3.9
+python-kasa==0.12.0

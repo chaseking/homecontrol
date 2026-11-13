@@ -1,0 +1,10 @@
+.env
+backend/.venv/
+build/
+logs/
+macos/.build/
+.kasa_devices.json
+config.invalid.json
+__pycache__/
+config.json
+.DS_Store
