@@ -64,9 +64,11 @@ quit_app() {
   pkill -9 -ax HomeControl 2>/dev/null || true
   sleep 0.5
 }
+# Right after the old app is killed, LaunchServices can still have it registered and `open`
+# fails with -600; that must not abort the script (set -e), so wait and try again.
 launch_app() {
-  for _ in 1 2 3; do
-    open "$1"
+  for _ in 1 2 3 4 5; do
+    open "$1" || { sleep 1; continue; }
     for _ in $(seq 1 25); do
       if pgrep -ax HomeControl >/dev/null; then echo "launched $1"; return 0; fi
       sleep 0.2
