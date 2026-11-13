@@ -71,7 +71,12 @@ final class Updater {
         guard !isBusy else { return }
         state = .checking
         defer { if state == .checking { state = .idle } }
-        var req = URLRequest(url: Self.versionURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 10)
+        Self.log("checking for updates (running \(current))")
+        // raw.githubusercontent.com serves files from a ~5 minute CDN cache keyed by the full URL, so a unique
+        // query string makes every check see the latest push.
+        var comps = URLComponents(url: Self.versionURL, resolvingAgainstBaseURL: false)!
+        comps.queryItems = [URLQueryItem(name: "t", value: String(Int(Date().timeIntervalSince1970)))]
+        var req = URLRequest(url: comps.url!, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 10)
         req.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
         do {
             let (data, resp) = try await URLSession.shared.data(for: req)
@@ -81,8 +86,10 @@ final class Updater {
             guard let v = AppVersion(String(decoding: data, as: UTF8.self)) else { throw UpdateError("Unrecognized version file") }
             latest = v
             checkError = nil
+            Self.log("GitHub \(Self.branch) has \(v); " + (v > current ? "update available" : "up to date"))
         } catch {
             checkError = error.localizedDescription
+            Self.log("check failed: \(error.localizedDescription)")
         }
         lastChecked = Date()
     }
@@ -101,7 +108,7 @@ final class Updater {
         state = .updating
         let log = Paths.updateLog
         try? FileManager.default.createDirectory(at: Paths.logs, withIntermediateDirectories: true)
-        FileManager.default.createFile(atPath: log.path, contents: nil)
+        Self.log("starting update \(current) -> \(available?.description ?? "?")")
 
         let branch = Self.branch
         Task.detached {
@@ -114,7 +121,7 @@ final class Updater {
             env["PATH"] = (extra + [env["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"]).joined(separator: ":")
             env["HOMECONTROL_BRANCH"] = branch
             p.environment = env
-            if let h = try? FileHandle(forWritingTo: log) { p.standardOutput = h; p.standardError = h }
+            if let h = try? FileHandle(forWritingTo: log) { h.seekToEndOfFile(); p.standardOutput = h; p.standardError = h }
             let failure: String?
             do {
                 try p.run()
@@ -136,6 +143,19 @@ final class Updater {
         let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
         let lines = text.split(separator: "\n").suffix(4).joined(separator: "\n")
         return lines.isEmpty ? "The update script failed. See ~/Library/Logs/HomeControl/update.log." : lines
+    }
+
+    /// Appends a timestamped line to ~/Library/Logs/HomeControl/update.log (trimmed when it grows past ~200 KB).
+    nonisolated static func log(_ message: String) {
+        let fm = FileManager.default
+        let url = Paths.updateLog
+        try? fm.createDirectory(at: Paths.logs, withIntermediateDirectories: true)
+        if let size = (try? fm.attributesOfItem(atPath: url.path))?[.size] as? Int, size > 200_000 { try? fm.removeItem(at: url) }
+        if !fm.fileExists(atPath: url.path) { fm.createFile(atPath: url.path, contents: nil) }
+        guard let h = try? FileHandle(forWritingTo: url) else { return }
+        defer { try? h.close() }
+        h.seekToEndOfFile()
+        h.write(Data("[\(Date().formatted(.iso8601))] \(message)\n".utf8))
     }
 
     struct UpdateError: LocalizedError {

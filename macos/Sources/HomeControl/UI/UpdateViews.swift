@@ -77,6 +77,7 @@ struct UpdateCard: View {
                     if let v = updater.available, updater.state != .updating {
                         Button("Update to \(v.description)") { updater.install() }.buttonStyle(.borderedProminent)
                     }
+                    Button("View Log") { AppModel.shared.openInEditor(Paths.updateLog) }
                     Button("Check for Updates") { Task { await updater.check() } }.disabled(updater.isBusy)
                 }
             }
