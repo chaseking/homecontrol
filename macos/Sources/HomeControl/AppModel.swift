@@ -59,6 +59,7 @@ final class AppModel {
         applyAppearance()
         scheduleSave()  // write out the full schema (with defaults) on launch
         Updater.shared.startChecking()
+        Updater.shared.announceIfUpdated()
         Task {
             if config.backend.isLocal { await local.start(port: config.backend.port) }
             await refresh()

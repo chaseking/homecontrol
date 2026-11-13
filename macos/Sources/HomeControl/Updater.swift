@@ -29,9 +29,8 @@ final class Updater {
         case failed(String)
     }
 
-    static let repo = "chaseking/homecontrol"
-    static let branch = "main"
-    private static let versionURL = URL(string: "https://raw.githubusercontent.com/\(repo)/\(branch)/VERSION")!
+    nonisolated static let repo = "chaseking/homecontrol"
+    nonisolated static let branch = "main"
 
     private(set) var state: State = .idle
     private(set) var latest: AppVersion?
@@ -72,11 +71,18 @@ final class Updater {
         state = .checking
         defer { if state == .checking { state = .idle } }
         Self.log("checking for updates (running \(current))")
-        // raw.githubusercontent.com serves files from a ~5 minute CDN cache keyed by the full URL, so a unique
-        // query string makes every check see the latest push.
-        var comps = URLComponents(url: Self.versionURL, resolvingAgainstBaseURL: false)!
-        comps.queryItems = [URLQueryItem(name: "t", value: String(Int(Date().timeIntervalSince1970)))]
-        var req = URLRequest(url: comps.url!, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 10)
+        // raw.githubusercontent.com/<repo>/main/... is served from a ~5 minute CDN cache that ignores query strings,
+        // so right after a push a check could still see the old version. Ask git for main's current commit instead
+        // (never cached) and read VERSION at that exact commit, whose URL can't be stale.
+        var url = URL(string: "https://raw.githubusercontent.com/\(Self.repo)/\(Self.branch)/VERSION")!
+        do {
+            let sha = try await Task.detached { try Self.remoteHead() }.value
+            url = URL(string: "https://raw.githubusercontent.com/\(Self.repo)/\(sha)/VERSION")!
+            Self.log("\(Self.branch) is at \(sha.prefix(7))")
+        } catch {
+            Self.log("couldn't ask git for \(Self.branch)'s commit (\(error.localizedDescription)); using the cached file")
+        }
+        var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 10)
         req.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
         do {
             let (data, resp) = try await URLSession.shared.data(for: req)
@@ -137,12 +143,41 @@ final class Updater {
     /// Snapshot/dev only: pretend GitHub has `version`.
     func simulateAvailable(_ version: String) { latest = AppVersion(version); lastChecked = Date() }
 
+    /// After an update relaunches the app, confirms the new version (once per version change).
+    func announceIfUpdated() {
+        let key = "lastRunVersion"
+        let defaults = UserDefaults.standard
+        let previous = defaults.string(forKey: key)
+        defaults.set(current.description, forKey: key)
+        guard let previous, previous != current.description else { return }
+        Self.log("now running \(current) (was \(previous))")
+        Notifier.post(title: "HomeControl updated", body: "Now running version \(current.description).")
+    }
+
     func dismissFailure() { if case .failed = state { state = .idle } }
 
     private nonisolated static func tail(of url: URL) -> String {
         let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
         let lines = text.split(separator: "\n").suffix(4).joined(separator: "\n")
         return lines.isEmpty ? "The update script failed. See ~/Library/Logs/HomeControl/update.log." : lines
+    }
+
+    /// The commit `main` points to on GitHub, via `git ls-remote`.
+    private nonisolated static func remoteHead() throws -> String {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        p.arguments = ["ls-remote", "https://github.com/\(repo).git", "refs/heads/\(branch)"]
+        p.environment = ["GIT_TERMINAL_PROMPT": "0", "HOME": NSHomeDirectory(), "PATH": "/usr/bin:/bin"]
+        let out = Pipe()
+        p.standardOutput = out
+        p.standardError = FileHandle.nullDevice
+        try p.run()
+        DispatchQueue.global().asyncAfter(deadline: .now() + 15) { if p.isRunning { p.terminate() } }
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        let sha = String(decoding: data, as: UTF8.self).split(whereSeparator: { $0 == "\t" || $0 == " " || $0 == "\n" }).first.map(String.init) ?? ""
+        guard p.terminationStatus == 0, sha.count == 40 else { throw UpdateError("git ls-remote failed") }
+        return sha
     }
 
     /// Appends a timestamped line to ~/Library/Logs/HomeControl/update.log (trimmed when it grows past ~200 KB).

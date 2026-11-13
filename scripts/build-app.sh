@@ -54,15 +54,35 @@ PLIST
 codesign --force --sign - "$APP" >/dev/null 2>&1
 echo "built $APP (v$VERSION)"
 
+# Quit a running copy and wait until it is really gone: `open` on a still-exiting app just
+# re-activates it, so the new version would never start.
+quit_app() {
+  pkill -x HomeControl 2>/dev/null || return 0
+  for _ in $(seq 1 50); do pgrep -x HomeControl >/dev/null || return 0; sleep 0.2; done
+  pkill -9 -x HomeControl 2>/dev/null || true
+  sleep 0.5
+}
+launch_app() {
+  for _ in 1 2 3; do
+    open "$1"
+    for _ in $(seq 1 25); do
+      if pgrep -x HomeControl >/dev/null; then echo "launched $1"; return 0; fi
+      sleep 0.2
+    done
+  done
+  echo "warning: HomeControl did not start" >&2
+  return 1
+}
+
 if [ "${1:-}" = "--install" ]; then
   DEST_DIR="${HOMECONTROL_INSTALL_DIR:-/Applications}"
   [ -w "$DEST_DIR" ] || { DEST_DIR="$HOME/Applications"; mkdir -p "$DEST_DIR"; }
-  pkill -x HomeControl 2>/dev/null && sleep 1 || true
+  quit_app
   rm -rf "$DEST_DIR/HomeControl.app"
   ditto "$APP" "$DEST_DIR/HomeControl.app"
   echo "installed $DEST_DIR/HomeControl.app"
-  open "$DEST_DIR/HomeControl.app"
+  launch_app "$DEST_DIR/HomeControl.app"
 elif [ "${1:-}" = "--open" ]; then
-  pkill -x HomeControl 2>/dev/null && sleep 1 || true
-  open "$APP"
+  quit_app
+  launch_app "$APP"
 fi
