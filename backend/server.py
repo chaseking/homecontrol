@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""HomeControl backend: a tiny HTTP API over Philips Hue + TP-Link Kasa.
+"""HomeControl backend: a tiny HTTP API over Philips Hue, TP-Link Kasa and Tuya / Smart Life.
 
   python server.py [--host 127.0.0.1] [--port 8790] [--config ../config.json] [--env ../.env]
 
 Reads integration settings from config.json (`integrations` section, written by the app) and
-secrets from .env (KASA_USERNAME, KASA_PASSWORD, HUE_USERNAME, optional HOMECONTROL_TOKEN).
+secrets from .env (KASA_USERNAME, KASA_PASSWORD, HUE_USERNAME, TUYA_ACCESS_ID, TUYA_ACCESS_SECRET,
+TUYA_REGION, optional HOMECONTROL_TOKEN). Tuya device keys live in tuya_devices.json next to config.json.
 Both files are re-read automatically when they change.
 
 API (JSON everywhere):
@@ -16,6 +17,8 @@ API (JSON everywhere):
   GET  /integrations/hue/test       ping the bridge
   POST /integrations/hue/pair       {bridge_ip?} one pairing attempt (press the link button first)
   GET  /integrations/kasa/test      rediscover Kasa devices
+  GET  /integrations/tuya/test      rediscover Tuya / Smart Life devices (Eightree etc.)
+  POST /integrations/tuya/refresh   fetch device local keys from Tuya's cloud (needs TUYA_* in .env)
   POST /reload                      force re-reading config/.env
   POST /shutdown                    stop the server (loopback only)
 """
@@ -36,6 +39,7 @@ import hue as hue_mod  # noqa: E402
 from errors import DeviceError, ProviderError  # noqa: E402
 from hue import HueProvider  # noqa: E402
 from kasa_provider import KasaProvider  # noqa: E402
+from tuya_provider import TuyaProvider  # noqa: E402
 
 
 
@@ -78,6 +82,7 @@ class Backend:
         self.session: aiohttp.ClientSession | None = None
         self.hue: HueProvider | None = None
         self.kasa: KasaProvider | None = None
+        self.tuya: TuyaProvider | None = None
         self._stamp = None
         self._sig: dict = {}
         self.env: dict = {}
@@ -99,13 +104,15 @@ class Backend:
             self.config = json.loads(self.config_path.read_text()) if self.config_path.exists() else {}
         except json.JSONDecodeError as e:
             log.error("config.json is not valid JSON (%s); keeping previous settings", e)
-        self.env = {**{k: v for k, v in os.environ.items() if k.startswith(("KASA_", "HUE_", "HOMECONTROL_"))},
+        self.env = {**{k: v for k, v in os.environ.items() if k.startswith(("KASA_", "HUE_", "TUYA_", "HOMECONTROL_"))},
                     **read_env(self.env_path)}
         integ = self.config.get("integrations", {})
-        h, k = integ.get("hue", {}), integ.get("kasa", {})
+        h, k, t = integ.get("hue", {}), integ.get("kasa", {}), integ.get("tuya", {})
         hue_sig = (h.get("enabled", True), h.get("bridgeIP", ""), self.env.get("HUE_USERNAME", ""))
         kasa_sig = (k.get("enabled", True), self.env.get("KASA_USERNAME", ""), self.env.get("KASA_PASSWORD", ""),
                     int(k.get("discoveryTimeout", 5)))
+        tuya_sig = (t.get("enabled", True), int(t.get("discoveryTimeout", 8)), self.env.get("TUYA_ACCESS_ID", ""),
+                    self.env.get("TUYA_ACCESS_SECRET", ""), self.env.get("TUYA_REGION", ""))
         if hue_sig != self._sig.get("hue"):
             self._sig["hue"] = hue_sig
             self.hue = HueProvider(hue_sig[1], hue_sig[2], self.session) if hue_sig[0] else None
@@ -119,6 +126,17 @@ class Backend:
                 self.kasa = KasaProvider(kasa_sig[1], kasa_sig[2], self.config_path.parent / ".kasa_devices.json", kasa_sig[3])
                 self.kasa.kick_discovery()
             log.info("kasa provider: %s", "enabled" if kasa_sig[0] else "disabled")
+        if tuya_sig != self._sig.get("tuya"):
+            self._sig["tuya"] = tuya_sig
+            if self.tuya:
+                await self.tuya.close()
+            self.tuya = None
+            if tuya_sig[0]:
+                d = self.config_path.parent
+                self.tuya = TuyaProvider(d / "tuya_devices.json", d / ".tuya_ips.json", tuya_sig[1], *tuya_sig[2:])
+                if self.tuya.has_keys:
+                    self.tuya.kick_discovery()
+            log.info("tuya provider: %s", "enabled" if tuya_sig[0] else "disabled")
 
     @property
     def token(self) -> str:
@@ -126,13 +144,13 @@ class Backend:
 
     def provider_for(self, dev_id: str):
         prefix = dev_id.split(":", 1)[0]
-        p = {"hue": self.hue, "kasa": self.kasa}.get(prefix)
+        p = {"hue": self.hue, "kasa": self.kasa, "tuya": self.tuya}.get(prefix)
         if p is None:
             raise DeviceError(f"No enabled integration for {dev_id}", status=404)
         return p
 
     async def devices(self) -> tuple[list, dict]:
-        provs = [p for p in (self.hue, self.kasa) if p]
+        provs = [p for p in (self.hue, self.kasa, self.tuya) if p]
         res = await asyncio.gather(*(p.list() for p in provs), return_exceptions=True)
         devices, errors = [], {}
         for p, r in zip(provs, res):
@@ -144,6 +162,8 @@ class Backend:
                 devices += r
         if self.kasa and self.kasa.last_error and "kasa" not in errors:
             errors["kasa"] = self.kasa.last_error
+        if self.tuya and self.tuya.last_error and "tuya" not in errors:
+            errors["tuya"] = self.tuya.last_error
         devices.sort(key=lambda d: (d["name"] or "").lower())
         return devices, errors
 
@@ -208,6 +228,8 @@ async def health(request):
             "hue": {"enabled": be.hue is not None, "configured": bool(be.hue and be.hue.configured),
                     "bridge_ip": be.hue.bridge_ip if be.hue else None},
             "kasa": {"enabled": be.kasa is not None, "has_credentials": bool(be.kasa and be.kasa.has_credentials)},
+            "tuya": {"enabled": be.tuya is not None, "configured": bool(be.tuya and be.tuya.has_keys),
+                     "has_credentials": bool(be.tuya and be.tuya.has_credentials)},
         },
     })
 
@@ -298,6 +320,22 @@ async def kasa_test(request):
     return web.json_response(await be.kasa.test())
 
 
+@routes.get("/integrations/tuya/test")
+async def tuya_test(request):
+    be: Backend = request.app["backend"]
+    if not be.tuya:
+        return err("Tuya integration is disabled", 503)
+    return web.json_response(await be.tuya.test())
+
+
+@routes.post("/integrations/tuya/refresh")
+async def tuya_refresh(request):
+    be: Backend = request.app["backend"]
+    if not be.tuya:
+        return err("Tuya integration is disabled", 503)
+    return web.json_response(await be.tuya.refresh_keys())
+
+
 @routes.post("/reload")
 async def reload(request):
     await request.app["backend"].sync(force=True)
@@ -344,6 +382,8 @@ def main():
     async def on_cleanup(app):
         if backend.kasa:
             await backend.kasa.close()
+        if backend.tuya:
+            await backend.tuya.close()
         await backend.session.close()
 
     app = web.Application(middlewares=[middleware])

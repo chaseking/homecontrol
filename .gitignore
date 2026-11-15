@@ -4,6 +4,8 @@ build/
 logs/
 macos/.build/
 .kasa_devices.json
+.tuya_ips.json
+tuya_devices.json
 config.invalid.json
 __pycache__/
 config.json

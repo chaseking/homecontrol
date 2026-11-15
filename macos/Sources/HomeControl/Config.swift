@@ -28,7 +28,7 @@ enum StepAction: String, Codable, CaseIterable, Identifiable {
 
 struct PresetStep: Codable, Identifiable, Equatable, Hashable {
     var id = UUID()
-    /// Persistent hardware-based id from the backend (`hue:<uniqueid>` / `kasa:<deviceId>`).
+    /// Persistent hardware-based id from the backend (`hue:<uniqueid>` / `kasa:<deviceId>` / `tuya:<gwId>`).
     var deviceId: String
     /// Last known display name — only used when the device is not currently visible.
     var deviceName: String
@@ -97,9 +97,14 @@ struct AppConfig: Codable, Equatable {
         var enabled = true
         var discoveryTimeout = 5
     }
+    struct Tuya: Codable, Equatable {
+        var enabled = true
+        var discoveryTimeout = 8
+    }
     struct Integrations: Codable, Equatable {
         var hue = Hue()
         var kasa = Kasa()
+        var tuya = Tuya()
     }
 
     var version = 1

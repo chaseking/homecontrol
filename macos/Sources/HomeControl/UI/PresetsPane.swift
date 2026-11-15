@@ -209,10 +209,10 @@ struct PresetEditor: View {
         Menu {
             let used = Set(preset.steps.map(\.deviceId))
             let available = model.devices.filter { !used.contains($0.id) }
-            ForEach(["hue", "kasa"], id: \.self) { prov in
+            ForEach(Providers.all, id: \.self) { prov in
                 let ds = available.filter { $0.provider == prov }
                 if !ds.isEmpty {
-                    Section(prov == "hue" ? "Philips Hue" : "Kasa") {
+                    Section(Providers.label(prov)) {
                         ForEach(ds) { d in Button(d.name + (d.online ? "" : " (offline)")) { add(d) } }
                     }
                 }

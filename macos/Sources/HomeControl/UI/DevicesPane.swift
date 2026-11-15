@@ -39,12 +39,13 @@ struct DevicesPane: View {
                     Text("All brands").tag("all")
                     Text("Philips Hue").tag("hue")
                     Text("Kasa").tag("kasa")
+                    Text("Smart Life").tag("tuya")
                 }
                 .labelsHidden().fixedSize()
                 Spacer()
             }
             ForEach(model.providerErrors.sorted(by: { $0.key < $1.key }), id: \.key) { k, v in
-                StatusMessage(kind: .error, text: "\(k == "hue" ? "Philips Hue" : "Kasa"): \(v)")
+                StatusMessage(kind: .error, text: "\(Providers.label(k)): \(v)")
             }
             if case .offline(let m) = model.connection {
                 StatusMessage(kind: .error, text: m)

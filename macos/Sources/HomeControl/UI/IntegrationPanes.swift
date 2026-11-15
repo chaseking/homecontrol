@@ -177,3 +177,93 @@ struct KasaPane: View {
         }
     }
 }
+
+// MARK: - Smart Life (Tuya)
+
+struct TuyaPane: View {
+    @Environment(AppModel.self) private var model
+    @State private var test: (StatusMessage.Kind, String)?
+    @State private var fetch: (StatusMessage.Kind, String)?
+
+    var body: some View {
+        @Bindable var model = model
+        PaneHeader(title: "Smart Life", subtitle: "Tuya / Smart Life devices (Eightree and other plugs), controlled locally on your network.")
+        RemoteNote()
+
+        Card {
+            Row(title: "Enabled") {
+                Toggle("", isOn: $model.config.integrations.tuya.enabled).toggleStyle(.switch).labelsHidden()
+            }
+            Row(title: "Tuya cloud project", subtitle: credentialSubtitle) {
+                HStack {
+                    Button("Reveal") { model.reveal(Paths.env) }
+                    Button("Open .env") { model.openInEditor(Paths.env) }
+                }
+            }
+            Row(title: "Device keys", subtitle: keysSubtitle) {
+                Button("Fetch Device Keys") { fetchKeys() }.disabled(fetch?.0 == .working)
+            }
+            Row(title: "Discovery timeout", subtitle: "How long to listen for devices on the network.", divider: false) {
+                Stepper(value: $model.config.integrations.tuya.discoveryTimeout, in: 6...30) {
+                    Text("\(model.config.integrations.tuya.discoveryTimeout) s").monospacedDigit()
+                }
+            }
+        }
+        if let fetch { StatusMessage(kind: fetch.0, text: fetch.1) }
+
+        Card {
+            Row(title: "Connection", subtitle: "Listens for devices on the network and checks they respond.", divider: false) {
+                Button("Test Connection") { runTest() }.disabled(test?.0 == .working)
+            }
+        }
+        if let test { StatusMessage(kind: test.0, text: test.1) }
+        if let err = model.providerErrors["tuya"] { StatusMessage(kind: .error, text: err) }
+
+        Card(title: ".env format") {
+            Text("TUYA_ACCESS_ID=your-access-id\nTUYA_ACCESS_SECRET=your-access-secret\nTUYA_REGION=us")
+                .font(.system(size: 11.5, design: .monospaced)).foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
+        }
+        Text("Each device has a secret local key that only Tuya's cloud can provide. Create a free project at iot.tuya.com, link your Smart Life account to it, and put its Access ID and Secret in .env (region: us, us-e, eu, eu-w, in, sg or cn). Fetch Device Keys then saves the keys next to config.json; after that control is local. Fetch again if you re-pair a device in the Smart Life app.")
+            .font(.system(size: 11.5)).foregroundStyle(.secondary)
+    }
+
+    private var health: Health.Integ? { model.health?.integrations["tuya"] }
+
+    private var credentialSubtitle: String {
+        (health?.hasCredentials ?? false) ? "Access ID and secret found in .env." : "Add TUYA_ACCESS_ID, TUYA_ACCESS_SECRET and TUYA_REGION to .env."
+    }
+
+    private var keysSubtitle: String {
+        (health?.configured ?? false) ? "Keys saved. Fetch again after re-pairing a device." : "Downloads each device's local key from Tuya's cloud (one time)."
+    }
+
+    private func fetchKeys() {
+        fetch = (.working, "Contacting Tuya cloud…")
+        Task {
+            do {
+                let r = try await model.client.tuyaRefreshKeys()
+                fetch = (.ok, "Saved keys for \(r.deviceCount) devices: " + r.devices.joined(separator: ", "))
+                try? await Task.sleep(for: .seconds(1))
+                await model.refresh()
+            } catch { fetch = (.error, error.localizedDescription) }
+        }
+    }
+
+    private func runTest() {
+        test = (.working, "Listening for devices…")
+        Task {
+            do {
+                let r = try await model.client.tuyaTest()
+                if r.ok {
+                    test = (.ok, "\(r.onlineCount) of \(r.deviceCount) devices responding · took \(String(format: "%.1f", Double(r.latencyMs) / 1000)) s" + (r.error.map { "\n\($0)" } ?? ""))
+                } else {
+                    test = (.error, r.error ?? "No devices responded.")
+                }
+                await model.refresh()
+            } catch { test = (.error, error.localizedDescription) }
+        }
+    }
+}

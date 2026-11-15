@@ -162,7 +162,7 @@ struct AdvancedPane: View {
 
             Card(title: "Files") {
                 fileRow("config.json", "Everything in these settings, including presets.", ConfigStore.url)
-                fileRow(".env", "Secrets: Kasa credentials, Hue bridge key, optional token.", Paths.env)
+                fileRow(".env", "Secrets: Kasa credentials, Hue bridge key, Tuya cloud keys, optional token.", Paths.env)
                 Row(title: "Reload config.json", subtitle: "Picks up edits made by hand (also happens automatically).", divider: false) {
                     Button("Reload") { model.reloadConfigFromDisk(); load() }
                 }

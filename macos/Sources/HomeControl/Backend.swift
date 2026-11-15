@@ -2,6 +2,19 @@ import Foundation
 
 // MARK: - API models
 
+/// Integrations the backend can expose, in display order.
+enum Providers {
+    static let all = ["hue", "kasa", "tuya"]
+    static func label(_ provider: String) -> String {
+        switch provider {
+        case "hue": return "Philips Hue"
+        case "kasa": return "Kasa"
+        case "tuya": return "Smart Life"
+        default: return provider.capitalized
+        }
+    }
+}
+
 struct Capabilities: Codable, Equatable, Hashable {
     var dimmable = false
     var color = false
@@ -24,7 +37,7 @@ struct Device: Codable, Identifiable, Equatable, Hashable {
     var capabilities: Capabilities
     var nativeId: String?
 
-    var providerLabel: String { provider == "hue" ? "Philips Hue" : provider == "kasa" ? "Kasa" : provider.capitalized }
+    var providerLabel: String { Providers.label(provider) }
     var kindLabel: String {
         switch kind {
         case "lightstrip": return "Light strip"
@@ -66,6 +79,9 @@ struct RunResponse: Codable { var ok: Bool; var results: [StepResult]; var ms: I
 struct HueTest: Codable { var ok: Bool; var latencyMs: Int; var bridgeName: String?; var apiVersion: String?; var lightCount: Int; var unreachable: Int }
 struct HuePair: Codable { var paired: Bool; var message: String }
 struct KasaTest: Codable { var ok: Bool; var hasCredentials: Bool; var latencyMs: Int; var deviceCount: Int; var onlineCount: Int; var devices: [String]; var error: String? }
+
+struct TuyaTest: Codable { var ok: Bool; var hasKeys: Bool; var hasCredentials: Bool; var latencyMs: Int; var deviceCount: Int; var onlineCount: Int; var devices: [String]; var error: String? }
+struct TuyaRefresh: Codable { var ok: Bool; var deviceCount: Int; var devices: [String] }
 
 /// Partial device update sent to POST /devices/{id}. nil fields are omitted.
 struct DeviceCommand: Encodable {
@@ -172,6 +188,8 @@ struct BackendClient {
         return try await request("POST", "integrations/hue/pair", body: B(bridgeIp: ip))
     }
     func kasaTest() async throws -> KasaTest { try await request("GET", "integrations/kasa/test", timeout: 40) }
+    func tuyaTest() async throws -> TuyaTest { try await request("GET", "integrations/tuya/test", timeout: 40) }
+    func tuyaRefreshKeys() async throws -> TuyaRefresh { try await request("POST", "integrations/tuya/refresh", timeout: 30) }
     func reload() async throws { let _: [String: Bool] = try await request("POST", "reload") }
     func shutdown() async { let _: [String: Bool]? = try? await request("POST", "shutdown", timeout: 2) }
 }

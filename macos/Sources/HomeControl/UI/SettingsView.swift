@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum Pane: String, CaseIterable, Identifiable {
-    case devices, presets, hue, kasa, customize, advanced
+    case devices, presets, hue, kasa, tuya, customize, advanced
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -9,6 +9,7 @@ enum Pane: String, CaseIterable, Identifiable {
         case .presets: return "Presets"
         case .hue: return "Philips Hue"
         case .kasa: return "Kasa"
+        case .tuya: return "Smart Life"
         case .customize: return "Customize"
         case .advanced: return "Advanced"
         }
@@ -19,6 +20,7 @@ enum Pane: String, CaseIterable, Identifiable {
         case .presets: return "sparkles"
         case .hue: return "lightbulb"
         case .kasa: return "powerplug"
+        case .tuya: return "bolt.horizontal"
         case .customize: return "paintbrush"
         case .advanced: return "slider.horizontal.3"
         }
@@ -37,7 +39,7 @@ struct SettingsView: View {
 
     private let groups: [(String?, [Pane])] = [
         (nil, [.devices, .presets]),
-        ("Integrations", [.hue, .kasa]),
+        ("Integrations", [.hue, .kasa, .tuya]),
         ("App", [.customize, .advanced]),
     ]
 
@@ -87,7 +89,7 @@ struct SettingsView: View {
                     .foregroundStyle(selected ? Color.primary : .secondary)
                 Text(pane.title).font(.system(size: 13, weight: selected ? .medium : .regular))
                 Spacer()
-                if pane == .hue || pane == .kasa, let err = model.providerErrors[pane.rawValue] {
+                if [.hue, .kasa, .tuya].contains(pane), let err = model.providerErrors[pane.rawValue] {
                     Image(systemName: "exclamationmark.circle.fill").font(.system(size: 11)).foregroundStyle(.orange).help(err)
                 }
             }
@@ -117,6 +119,7 @@ struct SettingsView: View {
         case .presets: PresetsPane()
         case .hue: ScrollPane { HuePane() }
         case .kasa: ScrollPane { KasaPane() }
+        case .tuya: ScrollPane { TuyaPane() }
         case .customize: ScrollPane { CustomizePane() }
         case .advanced: ScrollPane { AdvancedPane() }
         }
